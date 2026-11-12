@@ -39,8 +39,16 @@ if [ "$ROOT_END" -lt "$((DISK_LAST_SECTOR - 10))" ]; then
     echo "Extension de la partition racine..."
     parted -s "$IMAGE" resizepart 2 100%
 
+    PARTITION_INFO=$(parted -m "$IMAGE" unit s print)
+    ROOT_END=$(echo "$PARTITION_INFO" | awk -F: '$1=="2" {gsub(/s/, "", $3); print $3}')
+
+    ROOT_SIZE=$(((ROOT_END - ROOT_START + 1) * 512))
     ROOT_OFFSET=$((ROOT_START * 512))
-    ROOT_LOOP=$(losetup --find --show --offset "$ROOT_OFFSET" "$IMAGE")
+
+    ROOT_LOOP=$(losetup --find --show \
+        --offset "$ROOT_OFFSET" \
+        --sizelimit "$ROOT_SIZE" \
+        "$IMAGE")
 
     cleanup_root() {
         if [ -n "${ROOT_LOOP:-}" ]; then
