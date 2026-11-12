@@ -1,0 +1,13 @@
+# Images Raspberry Pi
+*.img
+*.img.xz
+*.qcow2
+
+# Données et fichiers générés
+data/*
+!data/.gitkeep
+
+# Secrets
+.env
+*.key
+*.pem

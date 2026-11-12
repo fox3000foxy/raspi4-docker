@@ -1,0 +1,29 @@
+services:
+  qemu:
+    build: .
+    command: ["bash", "/boot.sh"]
+    container_name: raspberrypi4
+    hostname: raspberrypi4
+    environment:
+      RPI_PASSWORD: ${RPI_PASSWORD:?Please define RPI_PASSWORD in .env}
+    privileged: true
+    devices:
+      - /dev/loop-control:/dev/loop-control
+      - /dev/loop0:/dev/loop0
+      - /dev/loop1:/dev/loop1
+      - /dev/loop2:/dev/loop2
+      - /dev/loop3:/dev/loop3
+      - /dev/loop4:/dev/loop4
+      - /dev/loop5:/dev/loop5
+      - /dev/loop6:/dev/loop6
+      - /dev/loop7:/dev/loop7
+    stdin_open: true
+    tty: true
+    ports:
+      - "2223:2222"
+      - "5900:5900"
+    volumes:
+      - ./data:/data
+      - ./boot.sh:/boot.sh:ro
+    mem_limit: 3g
+    restart: "no"
