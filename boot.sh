@@ -19,6 +19,57 @@ fi
 echo "Vérification de la taille du disque..."
 qemu-img resize -f raw "$IMAGE" 4G
 
+# Vérifier et agrandir la partition racine
+echo "Vérification de la partition racine..."
+
+PARTITION_INFO=$(parted -m "$IMAGE" unit s print)
+
+DISK_SECTORS=$(echo "$PARTITION_INFO" | awk -F: 'NR==2 {gsub(/s/, "", $2); print $2}')
+ROOT_START=$(echo "$PARTITION_INFO" | awk -F: '$1=="2" {gsub(/s/, "", $2); print $2}')
+ROOT_END=$(echo "$PARTITION_INFO" | awk -F: '$1=="2" {gsub(/s/, "", $3); print $3}')
+
+if [ -z "$DISK_SECTORS" ] || [ -z "$ROOT_START" ] || [ -z "$ROOT_END" ]; then
+    echo "Erreur : impossible de détecter la partition racine."
+    exit 1
+fi
+
+DISK_LAST_SECTOR=$((DISK_SECTORS - 1))
+
+if [ "$ROOT_END" -lt "$((DISK_LAST_SECTOR - 10))" ]; then
+    echo "Extension de la partition racine..."
+    parted -s "$IMAGE" resizepart 2 100%
+
+    ROOT_OFFSET=$((ROOT_START * 512))
+    ROOT_LOOP=$(losetup --find --show --offset "$ROOT_OFFSET" "$IMAGE")
+
+    cleanup_root() {
+        if [ -n "${ROOT_LOOP:-}" ]; then
+            losetup -d "$ROOT_LOOP" 2>/dev/null || true
+        fi
+    }
+    trap cleanup_root EXIT
+
+    echo "Vérification du système de fichiers..."
+    set +e
+    e2fsck -f -y "$ROOT_LOOP"
+    FSCK_STATUS=$?
+    set -e
+
+    if [ "$FSCK_STATUS" -gt 1 ]; then
+        echo "Erreur lors de la vérification ext4 (code $FSCK_STATUS)."
+        exit 1
+    fi
+
+    echo "Extension du système de fichiers ext4..."
+    resize2fs "$ROOT_LOOP"
+
+    losetup -d "$ROOT_LOOP"
+    ROOT_LOOP=""
+    trap - EXIT
+else
+    echo "La partition racine utilise déjà tout l'espace disponible."
+fi
+
 # Préparer la partition Boot
 echo "Montage de la partition Boot..."
 mkdir -p /mnt/rpi-boot
@@ -44,7 +95,6 @@ cp /mnt/rpi-boot/initramfs8 ./initramfs8
 # Créer le compte pi si nécessaire
 if [ ! -f /data/.userconf-injected ]; then
     echo "Configuration du compte pi..."
-    #HASH=$(openssl passwd -6 "${RPI_PASSWORD:-raspberry}")
     HASH=$(openssl passwd -6 "$RPI_PASSWORD")
     echo "pi:$HASH" > /mnt/rpi-boot/userconf.txt
     touch /data/.userconf-injected
